@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>StreamNet — CN Video Streaming Server</title>
+    <meta name="description" content="Computer Networks Project: A real-time video streaming server demonstrating HTTP Range Requests, chunked transfer, and cache management."/>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+    <!-- ═══════════════════════════ AUTH SCREEN ════════════════════════════ -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-bg">
+            <div class="auth-orb orb1"></div>
+            <div class="auth-orb orb2"></div>
+            <div class="auth-orb orb3"></div>
+        </div>
+        <div class="auth-card glass">
+            <div class="brand">
+                <div class="brand-icon">▶</div>
+                <div class="brand-text">
+                    <h1>StreamNet</h1>
+                    <p>CN Video Streaming Server</p>
+                </div>
+            </div>
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Login</button>
+                <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Register</button>
+            </div>
+            <div id="auth-error" class="auth-error hidden"></div>
+            <form id="auth-form" onsubmit="handleAuth(event)">
+                <div class="form-group">
+                    <label for="auth-username">Username</label>
+                    <input type="text" id="auth-username" autocomplete="username" placeholder="Enter username" required/>
+                </div>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" autocomplete="current-password" placeholder="Enter password" required/>
+                </div>
+                <button type="submit" class="btn-primary btn-full" id="auth-submit">Login</button>
+            </form>
+            <div class="cn-info">
+                <span class="badge">CN Concept</span>
+                <span>Sessions managed via JWT tokens in HTTP cookies</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ MAIN APP ══════════════════════════════ -->
+    <div id="main-app" class="screen hidden">
+        <!-- Navigation -->
+        <nav class="navbar glass">
+            <div class="nav-brand" onclick="showPage('library')">
+                <span class="nav-icon">▶</span>
+                <span class="nav-title">StreamNet</span>
+            </div>
+            <div class="nav-links">
+                <button class="nav-btn" id="nav-library" onclick="showPage('library')">
+                    <span>🎬</span> Library
+                </button>
+                <button class="nav-btn" id="nav-cache" onclick="showPage('cache')">
+                    <span>🕐</span> Recently Viewed
+                </button>
+                <button class="nav-btn" id="nav-network" onclick="showPage('network')">
+                    <span>📡</span> Network Stats
+                </button>
+            </div>
+            <div class="nav-user">
+                <span class="user-avatar" id="user-avatar">U</span>
+                <span class="user-name" id="user-name">User</span>
+                <button class="btn-logout" onclick="handleLogout()">Logout</button>
+            </div>
+        </nav>
+
+        <!-- ─── Library Page ─── -->
+        <div id="page-library" class="page active">
+            <div class="page-header">
+                <div>
+                    <h2>Video Library</h2>
+                    <p class="subtitle">Click a video to start streaming via HTTP Range Requests</p>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="search-videos" placeholder="🔍  Search videos…" oninput="filterVideos()"/>
+                </div>
+            </div>
+            <div id="video-grid" class="video-grid">
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>Loading videos…</p>
+                </div>
+            </div>
+            <div id="no-videos" class="empty-state hidden">
+                <div class="empty-icon">📂</div>
+                <h3>No Videos Found</h3>
+                <p>Add <code>.mp4</code> or <code>.webm</code> files to the <code>videos/</code> folder on the server to get started.</p>
+                <div class="cn-info" style="margin-top:1.5rem">
+                    <span class="badge">Demo Tip</span>
+                    <span>Place any .mp4 or .webm video files in the <code>videos/</code> directory, then refresh.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── Video Player Page ─── -->
+        <div id="page-player" class="page hidden">
+            <div class="player-layout">
+                <div class="player-main">
+                    <div class="player-wrap" id="player-wrap">
+                        <video id="video-player" controls crossorigin="use-credentials">
+                            Your browser does not support HTML5 video.
+                        </video>
+                        <div class="player-overlay" id="player-overlay">
+                            <div class="play-btn-big" onclick="togglePlay()">▶</div>
+                        </div>
+                    </div>
+                    <div class="player-info">
+                        <div class="player-title-row">
+                            <h2 id="playing-title">Video Title</h2>
+                            <button class="btn-back" onclick="showPage('library')">← Back to Library</button>
+                        </div>
+                        <div class="player-meta">
+                            <span id="playing-size" class="meta-chip">0 MB</span>
+                            <span id="playing-views" class="meta-chip">0 views</span>
+                            <span class="meta-chip" id="playback-speed-display">1× speed</span>
+                        </div>
+                        <div class="player-controls-row">
+                            <button class="btn-play-pause" id="play-pause-btn" onclick="togglePlay()">Play</button>
+                            <div class="speed-controls">
+                                <span class="control-label">Speed:</span>
+                                <button class="speed-btn" onclick="setSpeed(0.5)">0.5×</button>
+                                <button class="speed-btn active" onclick="setSpeed(1)">1×</button>
+                                <button class="speed-btn" onclick="setSpeed(1.5)">1.5×</button>
+                                <button class="speed-btn" onclick="setSpeed(2)">2×</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="player-sidebar glass">
+                    <h3>🌐 Live Network Analysis</h3>
+                    <div class="stat-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Protocol</div>
+                            <div class="stat-value mono" id="stat-protocol">HTTP/1.1</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Status Code</div>
+                            <div class="stat-value mono" id="stat-status">206 Partial</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Current Chunk</div>
+                            <div class="stat-value mono" id="stat-chunk">–</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Bytes Buffered</div>
+                            <div class="stat-value mono" id="stat-buffered">0 KB</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Buffer Ahead</div>
+                            <div class="stat-value mono" id="stat-buffer-ahead">0 s</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Playback %</div>
+                            <div class="stat-value mono" id="stat-progress">0%</div>
+                        </div>
+                    </div>
+                    <div class="http-diagram">
+                        <div class="http-label">HTTP Range Request Flow</div>
+                        <div class="http-flow">
+                            <div class="http-node client-node">CLIENT</div>
+                            <div class="http-arrows">
+                                <div class="arrow-line req-arrow">
+                                    <span>GET /stream/:id</span>
+                                    <span class="arrow-badge">Range: bytes=…</span>
+                                </div>
+                                <div class="arrow-line res-arrow">
+                                    <span>206 Partial Content</span>
+                                    <span class="arrow-badge res-badge">Content-Range: …</span>
+                                </div>
+                            </div>
+                            <div class="http-node server-node">SERVER</div>
+                        </div>
+                    </div>
+                    <div class="buffer-visual">
+                        <div class="buffer-label">Buffer Status</div>
+                        <div class="buffer-bar-wrap">
+                            <div class="buffer-fill" id="buffer-fill" style="width:0%"></div>
+                            <div class="buffer-played" id="buffer-played" style="width:0%"></div>
+                        </div>
+                        <div class="buffer-legend">
+                            <span><span class="legend-dot played"></span>Played</span>
+                            <span><span class="legend-dot buffered"></span>Buffered</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── Cache Page ─── -->
+        <div id="page-cache" class="page hidden">
+            <div class="page-header">
+                <div>
+                    <h2>🕐 Recently Viewed</h2>
+                    <p class="subtitle">Web cache management — tracks your viewing history server-side per session</p>
+                </div>
+                <button class="btn-outline" id="clear-cache-btn" onclick="clearCache()">Clear Cache</button>
+            </div>
+            <div class="cn-info" style="margin-bottom:2rem">
+                <span class="badge">CN Concept</span>
+                <span>Cache headers: <code>Cache-Control: no-store</code> on this endpoint prevents browser from caching the dynamic user-specific list</span>
+            </div>
+            <div id="cache-grid" class="video-grid">
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>Loading cache…</p>
+                </div>
+            </div>
+            <div id="no-cache" class="empty-state hidden">
+                <div class="empty-icon">🕐</div>
+                <h3>No Watch History</h3>
+                <p>Videos you watch will appear here. Your history is stored server-side and persists across tabs.</p>
+            </div>
+        </div>
+
+        <!-- ─── Network Stats Page ─── -->
+        <div id="page-network" class="page hidden">
+            <div class="page-header">
+                <div>
+                    <h2>📡 Network Analysis Dashboard</h2>
+                    <p class="subtitle">Real-time streaming metrics — demonstrates CN performance concepts</p>
+                </div>
+                <button class="btn-outline" onclick="loadNetworkStats()">↻ Refresh</button>
+            </div>
+
+            <div class="concepts-grid">
+                <div class="concept-card glass">
+                    <div class="concept-icon">🔀</div>
+                    <h3>HTTP Range Requests</h3>
+                    <p>Video streaming uses <code>Range: bytes=start-end</code> headers. The server responds with <code>206 Partial Content</code>, delivering only the requested chunk — enabling seeking, buffering, and adaptive delivery.</p>
+                    <div class="concept-code mono">
+                        GET /stream/abc123 HTTP/1.1<br/>
+                        Range: bytes=0-1048575<br/>
+                        <br/>
+                        HTTP/1.1 206 Partial Content<br/>
+                        Content-Range: bytes 0-1048575/15728640<br/>
+                        Content-Length: 1048576
+                    </div>
+                </div>
+                <div class="concept-card glass">
+                    <div class="concept-icon">🗄️</div>
+                    <h3>Cache-Control Headers</h3>
+                    <p>Static video files are served with <code>Cache-Control: public, max-age=3600</code>. Dynamic data (user cache list) uses <code>no-store</code> to prevent stale data.</p>
+                    <div class="concept-code mono">
+                        Video stream:<br/>
+                        Cache-Control: public, max-age=3600<br/>
+                        <br/>
+                        User cache API:<br/>
+                        Cache-Control: no-store
+                    </div>
+                </div>
+                <div class="concept-card glass">
+                    <div class="concept-icon">🔐</div>
+                    <h3>Stateless Auth (JWT)</h3>
+                    <p>Authentication uses JSON Web Tokens stored in HTTP cookies. The server validates tokens on each request without maintaining server-side sessions — demonstrating stateless protocol design.</p>
+                    <div class="concept-code mono">
+                        Cookie: token=eyJhbGci...<br/>
+                        Authorization: Bearer &lt;jwt&gt;<br/>
+                        <br/>
+                        Payload: { username, exp }<br/>
+                        Signed with HMAC-SHA256
+                    </div>
+                </div>
+                <div class="concept-card glass">
+                    <div class="concept-icon">📶</div>
+                    <h3>Client–Server Architecture</h3>
+                    <p>Server binds to <code>0.0.0.0:3000</code>, making it accessible from all network interfaces. Multiple clients on the same LAN/hotspot can simultaneously stream from the same server.</p>
+                    <div class="concept-code mono">
+                        Server: 0.0.0.0:3000<br/>
+                        Clients: any device on LAN<br/>
+                        <br/>
+                        Access: http://&lt;server-IP&gt;:3000<br/>
+                        Protocol: TCP/IP + HTTP/1.1
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="margin: 2rem 0 1rem; color: var(--text-primary)">📊 Per-Video Streaming Statistics</h3>
+            <div id="stats-table-wrap" class="glass stats-table-wrap">
+                <table class="stats-table" id="stats-table">
+                    <thead>
+                        <tr>
+                            <th>Video</th>
+                            <th>Size</th>
+                            <th>Views</th>
+                            <th>Bytes Streamed</th>
+                            <th>Avg per View</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stats-body">
+                        <tr><td colspan="5" class="loading-cell"><div class="spinner sm"></div> Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="server-info glass" id="server-info-card">
+                <h3>🖥️ Server Info</h3>
+                <div class="info-grid" id="server-info-grid">
+                    <div class="info-item"><span>Total Users</span><strong id="info-users">–</strong></div>
+                    <div class="info-item"><span>Total Videos</span><strong id="info-videos">–</strong></div>
+                    <div class="info-item"><span>Server Address</span><strong id="info-host">–</strong></div>
+                    <div class="info-item"><span>Port</span><strong id="info-port">3000</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
